@@ -8,15 +8,22 @@ export function Budgets() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [form, setForm] = useState({ category: '', limit: '' });
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const load = () => api.get('/analytics/dashboard').then((response) => setBudgets(response.data.budgets));
   useEffect(() => { load(); }, []);
 
   const add = async (event: React.FormEvent) => {
     event.preventDefault();
-    await api.post('/budgets', { category: form.category, limit: Number(form.limit) });
-    setForm({ category: '', limit: '' });
-    setCategoryOpen(false);
-    load();
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await api.post('/budgets', { category: form.category, limit: Number(form.limit) });
+      setForm({ category: '', limit: '' });
+      setCategoryOpen(false);
+      await load();
+    } finally {
+      setIsSaving(false);
+    }
   };
   const remove = async (id: string) => { await api.delete(`/budgets/${id}`); load(); };
 
@@ -75,7 +82,7 @@ export function Budgets() {
             )}
           </div>
           <Input required type="number" min="1" placeholder="Monthly limit" value={form.limit} onChange={(e) => setForm({ ...form, limit: e.target.value })} />
-          <Button><Plus className="w-4 h-4 mr-2" />Add</Button>
+          <Button disabled={isSaving}><Plus className="w-4 h-4 mr-2" />{isSaving ? 'Adding...' : 'Add'}</Button>
         </form>
       </CardContent></Card>
       <div className="grid md:grid-cols-2 gap-4">

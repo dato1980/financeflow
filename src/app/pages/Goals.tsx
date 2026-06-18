@@ -8,6 +8,7 @@ export function Goals() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [goalPlan, setGoalPlan] = useState<GoalPlan | null>(null);
   const [form, setForm] = useState({ name: '', targetAmount: '', currentSaved: '0', deadline: isoDate(new Date(new Date().setMonth(new Date().getMonth() + 12))) });
+  const [isSaving, setIsSaving] = useState(false);
   const load = () => api.get('/analytics/dashboard').then((response) => {
     setGoals(response.data.goals);
     setGoalPlan(response.data.goalPlan);
@@ -15,9 +16,15 @@ export function Goals() {
   useEffect(() => { load(); }, []);
   const add = async (event: React.FormEvent) => {
     event.preventDefault();
-    await api.post('/goals', { ...form, targetAmount: Number(form.targetAmount), currentSaved: Number(form.currentSaved) });
-    setForm({ name: '', targetAmount: '', currentSaved: '0', deadline: form.deadline });
-    load();
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await api.post('/goals', { ...form, targetAmount: Number(form.targetAmount), currentSaved: Number(form.currentSaved) });
+      setForm({ name: '', targetAmount: '', currentSaved: '0', deadline: form.deadline });
+      await load();
+    } finally {
+      setIsSaving(false);
+    }
   };
   const remove = async (id: string) => { await api.delete(`/goals/${id}`); load(); };
   const highestRequirements = [...goals]
@@ -33,7 +40,7 @@ export function Goals() {
           <Input required type="number" min="1" placeholder="Target amount" value={form.targetAmount} onChange={(e) => setForm({ ...form, targetAmount: e.target.value })} />
           <Input type="number" min="0" placeholder="Current saved" value={form.currentSaved} onChange={(e) => setForm({ ...form, currentSaved: e.target.value })} />
           <Input required type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} />
-          <Button><Plus className="w-4 h-4 mr-2" />Add</Button>
+          <Button disabled={isSaving}><Plus className="w-4 h-4 mr-2" />{isSaving ? 'Adding...' : 'Add'}</Button>
         </form>
       </CardContent></Card>
       {goals.length > 0 && goalPlan && (
