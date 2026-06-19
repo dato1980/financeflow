@@ -19,6 +19,7 @@ export function Transactions() {
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [searchChoices, setSearchChoices] = useState<string[]>(transactionCategories);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [showAllSearchChoices, setShowAllSearchChoices] = useState(false);
   const [type, setType] = useState('All');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -72,9 +73,9 @@ export function Transactions() {
   }, [searchParams]);
 
   useEffect(() => { const id = setTimeout(load, 200); return () => clearTimeout(id); }, [search, type, page]);
-  const visibleSearchChoices = searchChoices.filter((choice) =>
-    choice.toLowerCase().includes(search.toLowerCase()),
-  );
+  const visibleSearchChoices = showAllSearchChoices
+    ? searchChoices
+    : searchChoices.filter((choice) => choice.toLowerCase().includes(search.toLowerCase()));
   const firstItem = total ? (page - 1) * PAGE_SIZE + 1 : 0;
   const lastItem = Math.min(page * PAGE_SIZE, total);
   const pageNumbers = Array.from({ length: totalPages }, (_, index) => index + 1).filter((pageNumber) =>
@@ -144,19 +145,40 @@ export function Transactions() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               <input
                 value={search}
-                onFocus={() => setSearchOpen(true)}
+                onFocus={() => {
+                  setShowAllSearchChoices(false);
+                  setSearchOpen(true);
+                }}
                 onChange={(e) => {
                   updateSearch(e.target.value);
+                  setShowAllSearchChoices(false);
                   setSearchOpen(true);
                 }}
                 placeholder="Search transactions..."
-                className="w-full pl-9 pr-10 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-9 pr-20 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
+              {search && (
+                <button
+                  type="button"
+                  aria-label="Clear transaction search"
+                  onClick={() => {
+                    updateSearch('');
+                    setShowAllSearchChoices(true);
+                    setSearchOpen(true);
+                  }}
+                  className="absolute right-10 top-0 h-full w-9 grid place-items-center text-slate-400 hover:text-slate-900"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
               <button
                 type="button"
                 aria-label="Show search choices"
                 aria-expanded={searchOpen}
-                onClick={() => setSearchOpen((current) => !current)}
+                onClick={() => {
+                  setShowAllSearchChoices(true);
+                  setSearchOpen((current) => !current);
+                }}
                 className="absolute right-0 top-0 h-full w-10 grid place-items-center text-slate-500 hover:text-slate-900"
               >
                 <ChevronDown className={`w-4 h-4 transition-transform ${searchOpen ? 'rotate-180' : ''}`} />
@@ -167,6 +189,7 @@ export function Transactions() {
                     type="button"
                     onClick={() => {
                       updateSearch('');
+                      setShowAllSearchChoices(true);
                       setSearchOpen(false);
                     }}
                     className="block w-full rounded px-3 py-2 text-left text-sm font-medium text-indigo-700 hover:bg-indigo-50"
@@ -179,6 +202,7 @@ export function Transactions() {
                       type="button"
                       onClick={() => {
                         updateSearch(choice);
+                        setShowAllSearchChoices(false);
                         setSearchOpen(false);
                       }}
                       className="block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50"
