@@ -1,23 +1,27 @@
 import React from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router';
-import { 
-  LayoutDashboard, 
-  ArrowLeftRight, 
-  Wallet, 
-  PieChart, 
-  Target, 
-  Tags, 
-  FileText, 
-  Settings, 
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import {
+  LayoutDashboard,
+  ArrowLeftRight,
+  Wallet,
+  PieChart,
+  Target,
+  Settings,
   LogOut,
   Bell,
   Search,
   Plus,
   Menu,
-  X
+  X,
+  AlertTriangle,
+  CheckCircle2,
+  Target as TargetIcon,
+  ReceiptText,
+  Loader2
 } from 'lucide-react';
-import { Button, Input } from './ui';
+import { Button } from './ui';
 import { useAuth } from '../lib/AuthContext';
+import { api, Budget, formatGel, Goal, Transaction } from '../lib/api';
 
 const navItems = [
   { path: '/app', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -27,10 +31,179 @@ const navItems = [
   { path: '/app/goals', label: 'Financial Goals', icon: Target },
 ];
 
+type NotificationItem = {
+  id: string;
+  title: string;
+  message: string;
+  href: string;
+  kind: 'danger' | 'warning' | 'success' | 'info';
+  icon: React.ElementType;
+};
+
+type NotificationDashboard = {
+  summary: { income: number; expenses: number };
+  budgets: Budget[];
+  goals: Goal[];
+  recentTransactions: Transaction[];
+};
+
+const getNotificationStorageKey = (userId?: string) => `financeflow-read-notifications-${userId || 'guest'}`;
+
+const buildNotifications = (data: NotificationDashboard | null): NotificationItem[] => {
+  if (!data) return [];
+
+  const budgetAlerts = data.budgets
+    .filter((budget) => (budget.percentage || 0) >= 80)
+    .map((budget) => {
+      const percentage = budget.percentage || 0;
+      const overBudget = percentage >= 100;
+      return {
+        id: `budget-${budget._id}-${Math.round(percentage)}`,
+        title: overBudget ? `${budget.category} budget exceeded` : `${budget.category} budget near limit`,
+        message: `${formatGel(budget.spent || 0)} spent of ${formatGel(budget.limit)}.`,
+        href: '/app/budgets',
+        kind: overBudget ? 'danger' : 'warning',
+        icon: AlertTriangle,
+      } satisfies NotificationItem;
+    });
+
+  const goalAlerts = data.goals
+    .filter((goal) => goal.status === 'At Risk')
+    .map((goal) => ({
+      id: `goal-${goal._id}-${Math.round(goal.requiredMonthly || 0)}`,
+      title: `${goal.name} is at risk`,
+      message: `Required monthly saving is ${formatGel(goal.requiredMonthly || 0)}.`,
+      href: '/app/goals',
+      kind: 'warning',
+      icon: TargetIcon,
+    } satisfies NotificationItem));
+
+  const availableMonthly = data.summary.income - data.summary.expenses;
+  const cashFlowAlert: NotificationItem | null = availableMonthly <= 0
+    ? {
+        id: `cash-flow-${Math.round(availableMonthly)}`,
+        title: 'Monthly cash flow needs attention',
+        message: `Expenses are ${availableMonthly < 0 ? formatGel(Math.abs(availableMonthly)) + ' above income' : 'equal to income'} this month.`,
+        href: '/app/analytics',
+        kind: availableMonthly < 0 ? 'danger' : 'warning',
+        icon: AlertTriangle,
+      }
+    : null;
+
+  const latestTransaction = data.recentTransactions[0];
+  const transactionNotice: NotificationItem | null = latestTransaction
+    ? {
+        id: `transaction-${latestTransaction._id}`,
+        title: 'Latest transaction recorded',
+        message: `${latestTransaction.name} ${latestTransaction.type === 'Income' ? 'added' : 'spent'} ${formatGel(latestTransaction.amount)}.`,
+        href: '/app/transactions',
+        kind: 'success',
+        icon: ReceiptText,
+      }
+    : null;
+
+  const allClear: NotificationItem = {
+    id: 'all-clear',
+    title: 'No urgent alerts',
+    message: 'Budgets and goals look steady based on current records.',
+    href: '/app',
+    kind: 'info',
+    icon: CheckCircle2,
+  };
+
+  const items = [
+    ...budgetAlerts,
+    ...goalAlerts,
+    ...(cashFlowAlert ? [cashFlowAlert] : []),
+    ...(transactionNotice ? [transactionNotice] : []),
+  ].slice(0, 6);
+
+  return items.length ? items : [allClear];
+};
+
 export function AppLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = React.useState(false);
+  const [notificationsData, setNotificationsData] = React.useState<NotificationDashboard | null>(null);
+  const [notificationsLoading, setNotificationsLoading] = React.useState(true);
+  const [notificationsError, setNotificationsError] = React.useState('');
+  const [readNotificationIds, setReadNotificationIds] = React.useState<string[]>([]);
+  const notificationsRef = React.useRef<HTMLDivElement | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
+  const notificationItems = React.useMemo(() => buildNotifications(notificationsData), [notificationsData]);
+  const actionableItems = notificationItems.filter((item) => item.id !== 'all-clear');
+  const unreadCount = actionableItems.filter((item) => !readNotificationIds.includes(item.id)).length;
+
+  React.useEffect(() => {
+    const storageKey = getNotificationStorageKey(user?.id);
+    try {
+      setReadNotificationIds(JSON.parse(localStorage.getItem(storageKey) || '[]'));
+    } catch {
+      setReadNotificationIds([]);
+    }
+  }, [user?.id]);
+
+  React.useEffect(() => {
+    if (!isNotificationsOpen) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!notificationsRef.current?.contains(event.target as Node)) {
+        setIsNotificationsOpen(false);
+      }
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsNotificationsOpen(false);
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isNotificationsOpen]);
+
+  React.useEffect(() => {
+    let active = true;
+    setNotificationsLoading(true);
+    setNotificationsError('');
+    api.get<NotificationDashboard>('/analytics/dashboard')
+      .then((response) => {
+        if (active) setNotificationsData(response.data);
+      })
+      .catch(() => {
+        if (active) {
+          setNotificationsData(null);
+          setNotificationsError('Unable to load notifications right now.');
+        }
+      })
+      .finally(() => {
+        if (active) setNotificationsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [location.pathname]);
+
+  const saveReadNotificationIds = (ids: string[]) => {
+    setReadNotificationIds(ids);
+    localStorage.setItem(getNotificationStorageKey(user?.id), JSON.stringify(ids));
+  };
+
+  const markNotificationsRead = () => {
+    saveReadNotificationIds([...new Set([...readNotificationIds, ...actionableItems.map((item) => item.id)])]);
+  };
+
+  const openNotification = (item: NotificationItem) => {
+    if (item.id !== 'all-clear') {
+      saveReadNotificationIds([...new Set([...readNotificationIds, item.id])]);
+    }
+    setIsNotificationsOpen(false);
+    navigate(item.href);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900">
@@ -117,10 +290,90 @@ export function AppLayout() {
             <div className="hidden sm:flex text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-md">
               {new Date().toLocaleString('en', { month: 'long', year: 'numeric' })}
             </div>
-            <button className="relative p-2 text-slate-500 hover:text-slate-700 transition-colors rounded-full hover:bg-slate-100">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
-            </button>
+            <div ref={notificationsRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setIsNotificationsOpen((open) => !open)}
+                className="relative p-2 text-slate-500 hover:text-slate-700 transition-colors rounded-full hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+                aria-expanded={isNotificationsOpen}
+                aria-haspopup="dialog"
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-red-500 text-white text-[10px] leading-4 font-bold rounded-full">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              {isNotificationsOpen && (
+                <div
+                  role="dialog"
+                  aria-label="Notifications"
+                  className="absolute right-0 top-full mt-2 z-[80] w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-md border border-slate-200 bg-white shadow-xl"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                    <div>
+                      <h2 className="text-sm font-semibold text-slate-900">Notifications</h2>
+                      <p className="text-xs text-slate-500">{unreadCount ? `${unreadCount} unread update${unreadCount === 1 ? '' : 's'}` : 'Everything is read'}</p>
+                    </div>
+                    {actionableItems.length > 0 && (
+                      <button type="button" onClick={markNotificationsRead} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-96 overflow-y-auto py-2">
+                    {notificationsLoading ? (
+                      <div className="flex items-center gap-2 px-4 py-6 text-sm text-slate-500">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading notifications...
+                      </div>
+                    ) : notificationsError ? (
+                      <div className="flex items-start gap-3 px-4 py-6 text-sm text-slate-500">
+                        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+                          <AlertTriangle className="w-4 h-4" />
+                        </span>
+                        <span>{notificationsError}</span>
+                      </div>
+                    ) : (
+                      notificationItems.map((item) => {
+                        const Icon = item.icon;
+                        const isUnread = item.id !== 'all-clear' && !readNotificationIds.includes(item.id);
+                        const colorClass = item.kind === 'danger'
+                          ? 'bg-red-50 text-red-600'
+                          : item.kind === 'warning'
+                            ? 'bg-amber-50 text-amber-600'
+                            : item.kind === 'success'
+                              ? 'bg-emerald-50 text-emerald-600'
+                              : 'bg-slate-100 text-slate-600';
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => openNotification(item)}
+                            className="w-full px-4 py-3 text-left hover:bg-slate-50 focus:outline-none focus:bg-slate-50"
+                          >
+                            <div className="flex gap-3">
+                              <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${colorClass}`}>
+                                <Icon className="w-4 h-4" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-start justify-between gap-3">
+                                  <span className="text-sm font-medium text-slate-900">{item.title}</span>
+                                  {isUnread && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-indigo-600" />}
+                                </span>
+                                <span className="mt-1 block text-xs leading-5 text-slate-500">{item.message}</span>
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <Button size="sm" className="hidden sm:flex gap-2" onClick={() => navigate('/app/transactions')}>
               <Plus className="w-4 h-4" /> Add
             </Button>
