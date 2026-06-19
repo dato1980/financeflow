@@ -15,7 +15,7 @@ create table if not exists public.budgets (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   category text not null,
-  limit_amount numeric not null check (limit_amount > 0),
+  limit_amount numeric not null check (limit_amount > 0 and limit_amount <= 1000000),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (user_id, category)

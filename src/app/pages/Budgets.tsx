@@ -4,6 +4,8 @@ import { api, Budget, formatGel } from '../lib/api';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '../components/ui';
 import { transactionCategories } from '../constants';
 
+const MAX_BUDGET_LIMIT = 1000000;
+
 export function Budgets() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [form, setForm] = useState({ category: '', limit: '' });
@@ -28,10 +30,10 @@ export function Budgets() {
       if (existingBudget) {
         await api.put(`/budgets/${existingBudget._id}`, {
           category: existingBudget.category,
-          limit: existingBudget.limit + amount,
+          limit: Math.min(MAX_BUDGET_LIMIT, existingBudget.limit + amount),
         });
       } else {
-        await api.post('/budgets', { category: form.category, limit: amount });
+        await api.post('/budgets', { category: form.category, limit: Math.min(MAX_BUDGET_LIMIT, amount) });
       }
       setForm({ category: '', limit: '' });
       setCategoryOpen(false);
@@ -51,7 +53,26 @@ export function Budgets() {
     try {
       await api.put(`/budgets/${budget._id}`, {
         category: budget.category,
-        limit: budget.limit + amount,
+        limit: Math.min(MAX_BUDGET_LIMIT, budget.limit + amount),
+      });
+      setIncreaseAmounts((current) => ({ ...current, [budget._id]: '' }));
+      await load();
+    } finally {
+      setSavingBudgetId(null);
+    }
+  };
+
+  const reduceLimit = async (event: React.FormEvent, budget: Budget) => {
+    event.preventDefault();
+    if (savingBudgetId) return;
+    const amount = Number(increaseAmounts[budget._id]);
+    if (!amount || amount <= 0) return;
+
+    setSavingBudgetId(budget._id);
+    try {
+      await api.put(`/budgets/${budget._id}`, {
+        category: budget.category,
+        limit: Math.max(1, budget.limit - amount),
       });
       setIncreaseAmounts((current) => ({ ...current, [budget._id]: '' }));
       await load();
@@ -69,7 +90,7 @@ export function Budgets() {
     <div className="space-y-6 max-w-5xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Budgets</h1>
-        <p className="text-sm text-slate-500">Set monthly category limits and add more money to existing budgets.</p>
+        <p className="text-sm text-slate-500">Set monthly category limits, increase them, or reduce them. Maximum limit is {formatGel(MAX_BUDGET_LIMIT)}.</p>
       </div>
 
       <Card>
@@ -129,6 +150,7 @@ export function Budgets() {
               required
               type="number"
               min="1"
+              max={MAX_BUDGET_LIMIT}
               placeholder="Amount to add"
               value={form.limit}
               onChange={(event) => setForm({ ...form, limit: event.target.value })}
@@ -171,16 +193,25 @@ export function Budgets() {
               <p className={`text-xs mt-2 ${(budget.percentage || 0) >= 80 ? 'text-rose-600 font-medium' : 'text-slate-500'}`}>
                 {(budget.percentage || 0).toFixed(0)}% used{(budget.percentage || 0) >= 80 ? ' - Limit warning' : ''}
               </p>
-              <form onSubmit={(event) => increaseLimit(event, budget)} className="mt-4 flex gap-2">
+              <form onSubmit={(event) => increaseLimit(event, budget)} className="mt-4 grid grid-cols-[1fr_auto_auto] gap-2">
                 <Input
                   type="number"
                   min="1"
-                  placeholder="Add to limit"
+                  max={MAX_BUDGET_LIMIT}
+                  placeholder="Adjust limit"
                   value={increaseAmounts[budget._id] || ''}
                   onChange={(event) => setIncreaseAmounts((current) => ({ ...current, [budget._id]: event.target.value }))}
                 />
                 <Button type="submit" variant="outline" disabled={savingBudgetId === budget._id}>
                   {savingBudgetId === budget._id ? 'Saving...' : 'Add'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={savingBudgetId === budget._id}
+                  onClick={(event) => reduceLimit(event, budget)}
+                >
+                  Reduce
                 </Button>
               </form>
             </CardContent>

@@ -5,6 +5,18 @@ import { api, formatGel } from '../lib/api';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
+const budgetProgressColor = (percentage = 0) => {
+  if (percentage >= 100) return 'bg-rose-500';
+  if (percentage >= 80) return 'bg-amber-400';
+  return 'bg-indigo-500';
+};
+
+const budgetProgressText = (percentage = 0) => {
+  if (percentage >= 100) return 'Exceeded';
+  if (percentage >= 80) return 'Near limit';
+  return 'On track';
+};
+
 export function Analytics() {
   const [data, setData] = useState<any>(null);
   useEffect(() => { api.get('/analytics/dashboard').then((response) => setData(response.data)); }, []);
@@ -26,10 +38,23 @@ export function Analytics() {
           </Pie><Tooltip formatter={(value: number) => formatGel(value)} /><Legend /></PieChart></ResponsiveContainer>
         </div></CardContent></Card>
         <Card><CardHeader><CardTitle>Budget Progress</CardTitle></CardHeader><CardContent className="space-y-4">
-          {data.budgets.map((budget: any) => <div key={budget._id}>
-            <div className="flex justify-between text-sm mb-1"><span>{budget.category}</span><span>{formatGel(budget.spent || 0)} / {formatGel(budget.limit)}</span></div>
-            <div className="h-3 bg-slate-100 rounded-full"><div className="h-3 bg-indigo-500 rounded-full" style={{ width: `${Math.min(budget.percentage || 0, 100)}%` }} /></div>
-          </div>)}
+          {data.budgets.map((budget: any) => {
+            const percentage = budget.percentage || 0;
+            return (
+              <div key={budget._id}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>{budget.category}</span>
+                  <span>{formatGel(budget.spent || 0)} / {formatGel(budget.limit)}</span>
+                </div>
+                <div className="h-3 bg-slate-100 rounded-full">
+                  <div className={`h-3 rounded-full ${budgetProgressColor(percentage)}`} style={{ width: `${Math.min(percentage, 100)}%` }} />
+                </div>
+                <p className={`mt-1 text-xs ${percentage >= 80 ? 'font-medium text-rose-600' : 'text-slate-500'}`}>
+                  {percentage.toFixed(0)}% used - {budgetProgressText(percentage)}
+                </p>
+              </div>
+            );
+          })}
           {!data.budgets.length && <p className="text-sm text-slate-500">No budgets configured yet.</p>}
         </CardContent></Card>
       </div>

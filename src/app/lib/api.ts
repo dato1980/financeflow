@@ -57,7 +57,10 @@ type GoalRow = {
   deadline: string;
 };
 
+const MAX_BUDGET_LIMIT = 1000000;
 const toNumber = (value: number | string | null | undefined) => Number(value || 0);
+const toBudgetLimit = (value: number | string | null | undefined) =>
+  Math.max(1, Math.min(MAX_BUDGET_LIMIT, toNumber(value)));
 
 const mapTransaction = (row: TransactionRow): Transaction => ({
   _id: row.id,
@@ -257,7 +260,7 @@ const insertRecord = async (path: string, payload: any) => {
   if (path === '/budgets') {
     const { data, error } = await supabase
       .from('budgets')
-      .insert({ user_id: userId, category: payload.category, limit_amount: payload.limit })
+      .insert({ user_id: userId, category: payload.category, limit_amount: toBudgetLimit(payload.limit) })
       .select()
       .single();
     if (error) throw error;
@@ -304,7 +307,7 @@ const updateRecord = async (path: string, payload: any) => {
   if (collection === 'budgets') {
     const { data, error } = await supabase
       .from('budgets')
-      .update({ category: payload.category, limit_amount: payload.limit })
+      .update({ category: payload.category, limit_amount: toBudgetLimit(payload.limit) })
       .eq('id', id)
       .select()
       .single();
