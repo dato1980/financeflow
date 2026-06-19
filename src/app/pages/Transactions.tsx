@@ -40,6 +40,13 @@ export function Transactions() {
     setSearchParams(nextParams, { replace: true });
   };
 
+  const clearAddParam = () => {
+    if (!searchParams.has('add')) return;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('add');
+    setSearchParams(nextParams, { replace: true });
+  };
+
   const load = async () => {
     const response = await api.get('/transactions', { params: { search, type, page, limit: PAGE_SIZE } });
     const result = response.data as {
@@ -82,6 +89,15 @@ export function Transactions() {
     setOpen(true);
   };
 
+  const closeForm = () => {
+    setOpen(false);
+    clearAddParam();
+  };
+
+  useEffect(() => {
+    if (searchParams.get('add') === '1' && !open) showForm();
+  }, [searchParams, open]);
+
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isSaving) return;
@@ -90,7 +106,7 @@ export function Transactions() {
       const payload = { ...form, amount: Number(form.amount) };
       if (editing) await api.put(`/transactions/${editing._id}`, payload);
       else await api.post('/transactions', payload);
-      setOpen(false);
+      closeForm();
       if (!editing && page !== 1) setPage(1);
       else await load();
     } finally {
@@ -257,7 +273,7 @@ export function Transactions() {
       {open && (
         <div className="fixed inset-0 z-50 bg-slate-950/40 grid place-items-center p-4">
           <form onSubmit={save} className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
-            <div className="flex justify-between"><h2 className="text-xl font-bold">{editing ? 'Edit transaction' : 'Add transaction'}</h2><button type="button" onClick={() => setOpen(false)}><X /></button></div>
+            <div className="flex justify-between"><h2 className="text-xl font-bold">{editing ? 'Edit transaction' : 'Add transaction'}</h2><button type="button" onClick={closeForm}><X /></button></div>
             <div className="grid sm:grid-cols-2 gap-4">
               <label className="text-sm text-slate-700">Name<Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
               <div
@@ -365,7 +381,7 @@ export function Transactions() {
                 )}
               </div>
             </div>
-            <div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isSaving}>Cancel</Button><Button type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save'}</Button></div>
+            <div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={closeForm} disabled={isSaving}>Cancel</Button><Button type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save'}</Button></div>
           </form>
         </div>
       )}

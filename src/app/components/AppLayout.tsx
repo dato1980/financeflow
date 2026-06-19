@@ -396,7 +396,7 @@ export function AppLayout() {
                 </div>
               )}
             </div>
-            <Button size="sm" className="hidden sm:flex gap-2" onClick={() => navigate('/app/transactions')}>
+            <Button size="sm" className="hidden sm:flex gap-2" onClick={() => navigate('/app/transactions?add=1')}>
               <Plus className="w-4 h-4" /> Add
             </Button>
             <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden sm:hidden">
@@ -459,7 +459,12 @@ export function AppLayout() {
         ))}
         
         <div className="relative -top-5">
-          <button className="w-12 h-12 rounded-full bg-indigo-600 text-white shadow-lg flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all">
+          <button
+            type="button"
+            onClick={() => navigate('/app/transactions?add=1')}
+            className="w-12 h-12 rounded-full bg-indigo-600 text-white shadow-lg flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all"
+            aria-label="Add transaction"
+          >
             <Plus className="w-6 h-6" />
           </button>
         </div>
