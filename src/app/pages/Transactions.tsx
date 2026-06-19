@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, Edit2, Plus, Search, Trash2, X } from 'lucide-react';
 import { Badge, Button, Card, CardContent, Input } from '../components/ui';
 import { transactionCategories } from '../constants';
@@ -13,8 +14,9 @@ const emptyForm = {
 };
 
 export function Transactions() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const [searchChoices, setSearchChoices] = useState<string[]>(transactionCategories);
   const [searchOpen, setSearchOpen] = useState(false);
   const [type, setType] = useState('All');
@@ -27,6 +29,16 @@ export function Transactions() {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [methodOpen, setMethodOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const updateSearch = (value: string) => {
+    setSearch(value);
+    setPage(1);
+    const nextParams = new URLSearchParams(searchParams);
+    const query = value.trim();
+    if (query) nextParams.set('search', query);
+    else nextParams.delete('search');
+    setSearchParams(nextParams, { replace: true });
+  };
 
   const load = async () => {
     const response = await api.get('/transactions', { params: { search, type, page, limit: PAGE_SIZE } });
@@ -45,6 +57,13 @@ export function Transactions() {
       ...result.items.flatMap((transaction) => [transaction.name, transaction.category]),
     ])).sort((a, b) => a.localeCompare(b)));
   };
+
+  useEffect(() => {
+    const nextSearch = searchParams.get('search') || '';
+    setSearch((current) => current === nextSearch ? current : nextSearch);
+    setPage(1);
+  }, [searchParams]);
+
   useEffect(() => { const id = setTimeout(load, 200); return () => clearTimeout(id); }, [search, type, page]);
   const visibleSearchChoices = searchChoices.filter((choice) =>
     choice.toLowerCase().includes(search.toLowerCase()),
@@ -107,8 +126,7 @@ export function Transactions() {
                 value={search}
                 onFocus={() => setSearchOpen(true)}
                 onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
+                  updateSearch(e.target.value);
                   setSearchOpen(true);
                 }}
                 placeholder="Search transactions..."
@@ -128,8 +146,7 @@ export function Transactions() {
                   <button
                     type="button"
                     onClick={() => {
-                      setSearch('');
-                      setPage(1);
+                      updateSearch('');
                       setSearchOpen(false);
                     }}
                     className="block w-full rounded px-3 py-2 text-left text-sm font-medium text-indigo-700 hover:bg-indigo-50"
@@ -141,8 +158,7 @@ export function Transactions() {
                       key={choice}
                       type="button"
                       onClick={() => {
-                        setSearch(choice);
-                        setPage(1);
+                        updateSearch(choice);
                         setSearchOpen(false);
                       }}
                       className="block w-full rounded px-3 py-2 text-left text-sm text-slate-700 hover:bg-indigo-50"

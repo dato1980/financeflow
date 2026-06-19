@@ -124,6 +124,7 @@ const buildNotifications = (data: NotificationDashboard | null): NotificationIte
 export function AppLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = React.useState(false);
+  const [headerSearch, setHeaderSearch] = React.useState('');
   const [notificationsData, setNotificationsData] = React.useState<NotificationDashboard | null>(null);
   const [notificationsLoading, setNotificationsLoading] = React.useState(true);
   const [notificationsError, setNotificationsError] = React.useState('');
@@ -135,6 +136,16 @@ export function AppLayout() {
   const notificationItems = React.useMemo(() => buildNotifications(notificationsData), [notificationsData]);
   const actionableItems = notificationItems.filter((item) => item.id !== 'all-clear');
   const unreadCount = actionableItems.filter((item) => !readNotificationIds.includes(item.id)).length;
+
+  React.useEffect(() => {
+    if (location.pathname !== '/app/transactions') {
+      setHeaderSearch('');
+      return;
+    }
+
+    const params = new URLSearchParams(location.search);
+    setHeaderSearch(params.get('search') || '');
+  }, [location.pathname, location.search]);
 
   React.useEffect(() => {
     const storageKey = getNotificationStorageKey(user?.id);
@@ -203,6 +214,12 @@ export function AppLayout() {
     }
     setIsNotificationsOpen(false);
     navigate(item.href);
+  };
+
+  const searchTransactions = (value: string) => {
+    setHeaderSearch(value);
+    const query = value.trim();
+    navigate(query ? `/app/transactions?search=${encodeURIComponent(query)}` : '/app/transactions');
   };
 
   return (
@@ -278,6 +295,11 @@ export function AppLayout() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input 
                   type="text" 
+                  value={headerSearch}
+                  onChange={(event) => searchTransactions(event.target.value)}
+                  onFocus={() => {
+                    if (location.pathname !== '/app/transactions') navigate('/app/transactions');
+                  }}
                   placeholder="Search transactions..." 
                   className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-colors"
                 />
