@@ -95,8 +95,12 @@ export function Transactions() {
   };
 
   useEffect(() => {
-    if (searchParams.get('add') === '1' && !open) showForm();
-  }, [searchParams, open]);
+    if (searchParams.get('add') !== '1') return;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('add');
+    setSearchParams(nextParams, { replace: true });
+    showForm();
+  }, [searchParams, setSearchParams]);
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
