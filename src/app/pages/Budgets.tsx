@@ -7,17 +7,32 @@ import { transactionCategories } from '../constants';
 export function Budgets() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [form, setForm] = useState({ category: '', limit: '' });
+  const [increaseAmounts, setIncreaseAmounts] = useState<Record<string, string>>({});
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [savingBudgetId, setSavingBudgetId] = useState<string | null>(null);
+
   const load = () => api.get('/analytics/dashboard').then((response) => setBudgets(response.data.budgets));
+
   useEffect(() => { load(); }, []);
 
   const add = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isSaving) return;
+    const amount = Number(form.limit);
+    if (!amount || amount <= 0) return;
+
     setIsSaving(true);
     try {
-      await api.post('/budgets', { category: form.category, limit: Number(form.limit) });
+      const existingBudget = budgets.find((budget) => budget.category.toLowerCase() === form.category.trim().toLowerCase());
+      if (existingBudget) {
+        await api.put(`/budgets/${existingBudget._id}`, {
+          category: existingBudget.category,
+          limit: existingBudget.limit + amount,
+        });
+      } else {
+        await api.post('/budgets', { category: form.category, limit: amount });
+      }
       setForm({ category: '', limit: '' });
       setCategoryOpen(false);
       await load();
@@ -25,76 +40,151 @@ export function Budgets() {
       setIsSaving(false);
     }
   };
-  const remove = async (id: string) => { await api.delete(`/budgets/${id}`); load(); };
+
+  const increaseLimit = async (event: React.FormEvent, budget: Budget) => {
+    event.preventDefault();
+    if (savingBudgetId) return;
+    const amount = Number(increaseAmounts[budget._id]);
+    if (!amount || amount <= 0) return;
+
+    setSavingBudgetId(budget._id);
+    try {
+      await api.put(`/budgets/${budget._id}`, {
+        category: budget.category,
+        limit: budget.limit + amount,
+      });
+      setIncreaseAmounts((current) => ({ ...current, [budget._id]: '' }));
+      await load();
+    } finally {
+      setSavingBudgetId(null);
+    }
+  };
+
+  const remove = async (id: string) => {
+    await api.delete(`/budgets/${id}`);
+    load();
+  };
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div><h1 className="text-2xl font-bold text-slate-900">Budgets</h1><p className="text-sm text-slate-500">Set monthly category limits and catch overspending early.</p></div>
-      <Card><CardHeader><CardTitle>Add category limit</CardTitle></CardHeader><CardContent>
-        <form onSubmit={add} className="grid sm:grid-cols-[1fr_1fr_auto] gap-3">
-          <div
-            className="relative"
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) setCategoryOpen(false);
-            }}
-          >
-            <div className="relative">
-              <Input
-                required
-                autoComplete="off"
-                className="pr-10"
-                placeholder="Choose or type a category"
-                value={form.category}
-                onFocus={() => setCategoryOpen(true)}
-                onChange={(e) => {
-                  setForm({ ...form, category: e.target.value });
-                  setCategoryOpen(true);
-                }}
-              />
-              <button
-                type="button"
-                aria-label="Show category options"
-                aria-expanded={categoryOpen}
-                onClick={() => setCategoryOpen((current) => !current)}
-                className="absolute right-0 top-0 h-10 w-10 grid place-items-center text-slate-500 hover:text-slate-900"
-              >
-                <ChevronDown className={`w-4 h-4 transition-transform ${categoryOpen ? 'rotate-180' : ''}`} />
-              </button>
-            </div>
-            {categoryOpen && (
-              <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg">
-                {transactionCategories.map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    onClick={() => {
-                      setForm({ ...form, category });
-                      setCategoryOpen(false);
-                    }}
-                    className={`block w-full rounded px-3 py-2 text-left text-sm hover:bg-indigo-50 ${
-                      form.category === category ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-700'
-                    }`}
-                  >
-                    {category}
-                  </button>
-                ))}
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Budgets</h1>
+        <p className="text-sm text-slate-500">Set monthly category limits and add more money to existing budgets.</p>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle>Add or increase category limit</CardTitle></CardHeader>
+        <CardContent>
+          <form onSubmit={add} className="grid sm:grid-cols-[1fr_1fr_auto] gap-3">
+            <div
+              className="relative"
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setCategoryOpen(false);
+              }}
+            >
+              <div className="relative">
+                <Input
+                  required
+                  autoComplete="off"
+                  className="pr-10"
+                  placeholder="Choose or type a category"
+                  value={form.category}
+                  onFocus={() => setCategoryOpen(true)}
+                  onChange={(event) => {
+                    setForm({ ...form, category: event.target.value });
+                    setCategoryOpen(true);
+                  }}
+                />
+                <button
+                  type="button"
+                  aria-label="Show category options"
+                  aria-expanded={categoryOpen}
+                  onClick={() => setCategoryOpen((current) => !current)}
+                  className="absolute right-0 top-0 h-10 w-10 grid place-items-center text-slate-500 hover:text-slate-900"
+                >
+                  <ChevronDown className={`w-4 h-4 transition-transform ${categoryOpen ? 'rotate-180' : ''}`} />
+                </button>
               </div>
-            )}
-          </div>
-          <Input required type="number" min="1" placeholder="Monthly limit" value={form.limit} onChange={(e) => setForm({ ...form, limit: e.target.value })} />
-          <Button disabled={isSaving}><Plus className="w-4 h-4 mr-2" />{isSaving ? 'Adding...' : 'Add'}</Button>
-        </form>
-      </CardContent></Card>
+              {categoryOpen && (
+                <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg">
+                  {transactionCategories.map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => {
+                        setForm({ ...form, category });
+                        setCategoryOpen(false);
+                      }}
+                      className={`block w-full rounded px-3 py-2 text-left text-sm hover:bg-indigo-50 ${
+                        form.category === category ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-700'
+                      }`}
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <Input
+              required
+              type="number"
+              min="1"
+              placeholder="Amount to add"
+              value={form.limit}
+              onChange={(event) => setForm({ ...form, limit: event.target.value })}
+            />
+            <Button disabled={isSaving}>
+              <Plus className="w-4 h-4 mr-2" />
+              {isSaving ? 'Adding...' : 'Add'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
       <div className="grid md:grid-cols-2 gap-4">
         {budgets.map((budget) => (
-          <Card key={budget._id}><CardContent className="p-5">
-            <div className="flex justify-between items-start">
-              <div><h3 className="font-semibold">{budget.category}</h3><p className="text-sm text-slate-500 mt-1">{formatGel(budget.spent || 0)} of {formatGel(budget.limit)}</p></div>
-              <button onClick={() => remove(budget._id)} className="text-slate-400 hover:text-rose-600"><Trash2 className="w-4 h-4" /></button>
-            </div>
-            <div className="w-full bg-slate-100 rounded-full h-3 mt-4"><div className={`h-3 rounded-full ${(budget.percentage || 0) >= 100 ? 'bg-rose-500' : (budget.percentage || 0) >= 80 ? 'bg-amber-400' : 'bg-indigo-500'}`} style={{ width: `${Math.min(budget.percentage || 0, 100)}%` }} /></div>
-            <p className={`text-xs mt-2 ${(budget.percentage || 0) >= 80 ? 'text-rose-600 font-medium' : 'text-slate-500'}`}>{(budget.percentage || 0).toFixed(0)}% used{(budget.percentage || 0) >= 80 ? ' • Limit warning' : ''}</p>
-          </CardContent></Card>
+          <Card key={budget._id}>
+            <CardContent className="p-5">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-semibold">{budget.category}</h3>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {formatGel(budget.spent || 0)} of {formatGel(budget.limit)}
+                  </p>
+                </div>
+                <button onClick={() => remove(budget._id)} className="text-slate-400 hover:text-rose-600">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-3 mt-4">
+                <div
+                  className={`h-3 rounded-full ${
+                    (budget.percentage || 0) >= 100
+                      ? 'bg-rose-500'
+                      : (budget.percentage || 0) >= 80
+                        ? 'bg-amber-400'
+                        : 'bg-indigo-500'
+                  }`}
+                  style={{ width: `${Math.min(budget.percentage || 0, 100)}%` }}
+                />
+              </div>
+              <p className={`text-xs mt-2 ${(budget.percentage || 0) >= 80 ? 'text-rose-600 font-medium' : 'text-slate-500'}`}>
+                {(budget.percentage || 0).toFixed(0)}% used{(budget.percentage || 0) >= 80 ? ' - Limit warning' : ''}
+              </p>
+              <form onSubmit={(event) => increaseLimit(event, budget)} className="mt-4 flex gap-2">
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="Add to limit"
+                  value={increaseAmounts[budget._id] || ''}
+                  onChange={(event) => setIncreaseAmounts((current) => ({ ...current, [budget._id]: event.target.value }))}
+                />
+                <Button type="submit" variant="outline" disabled={savingBudgetId === budget._id}>
+                  {savingBudgetId === budget._id ? 'Saving...' : 'Add'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>
